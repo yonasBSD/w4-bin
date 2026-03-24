@@ -6,11 +6,9 @@ mod highlight;
 mod io;
 mod params;
 
-use crate::{
-    errors::{InternalServerError, NotFound},
-    highlight::highlight,
-    io::{PasteStore, generate_id, get_paste, store_paste},
-    params::{HostHeader, IsPlaintextRequest},
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::LazyLock,
 };
 
 use actix_web::{
@@ -20,11 +18,14 @@ use actix_web::{
 };
 use askama::Template;
 use log::{error, info};
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    sync::LazyLock,
-};
 use syntect::html::{ClassStyle, css_for_theme_with_class_style};
+
+use crate::{
+    errors::{InternalServerError, NotFound},
+    highlight::highlight,
+    io::{PasteStore, generate_id, get_paste, store_paste},
+    params::{HostHeader, IsPlaintextRequest},
+};
 
 #[derive(argh::FromArgs, Clone)]
 /// a pastebin.
@@ -45,6 +46,7 @@ pub struct BinArgs {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // Initialize logging with pretty output
     pretty_env_logger::formatted_builder()
         .filter_level(log::LevelFilter::Info)
         .parse_default_env()
@@ -52,6 +54,7 @@ async fn main() -> std::io::Result<()> {
 
     let args: BinArgs = argh::from_env();
 
+    // Shared state for storing pastes
     let store = Data::new(PasteStore::default());
 
     let server = HttpServer::new({
@@ -86,6 +89,7 @@ async fn main() -> std::io::Result<()> {
 #[template(path = "index.html")]
 struct Index;
 
+/// Renders the index page
 async fn index(req: HttpRequest) -> Result<HttpResponse, Error> {
     render_template(&req, &Index)
 }
@@ -95,6 +99,7 @@ struct IndexForm {
     val: Bytes,
 }
 
+/// Handles web form submissions
 async fn submit(input: web::Form<IndexForm>, store: Data<PasteStore>) -> impl Responder {
     let id = generate_id();
     let uri = format!("/{id}");
@@ -104,6 +109,7 @@ async fn submit(input: web::Form<IndexForm>, store: Data<PasteStore>) -> impl Re
         .finish()
 }
 
+/// Handles raw PUT submissions (e.g., from curl)
 async fn submit_raw(
     data: Bytes,
     host: HostHeader,
@@ -127,17 +133,19 @@ struct ShowPaste {
     content: String,
 }
 
+/// Displays a paste with syntax highlighting
 async fn show_paste(
     req: HttpRequest,
     key: actix_web::web::Path<String>,
     plaintext: IsPlaintextRequest,
     store: Data<PasteStore>,
 ) -> Result<HttpResponse, Error> {
+    // Separate the key from the optional extension (e.g., "abcdef.rs" -> "abcdef", Some("rs"))
     let mut splitter = key.splitn(2, '.');
-    let key = splitter.next().unwrap();
-    let ext = splitter.next();
+    let key_id = splitter.next().unwrap();
+    let extension = splitter.next();
 
-    let entry = get_paste(&store, key).ok_or(NotFound)?;
+    let entry = get_paste(&store, key_id).ok_or(NotFound)?;
 
     if *plaintext {
         Ok(HttpResponse::Ok()
@@ -146,24 +154,25 @@ async fn show_paste(
     } else {
         let data = std::str::from_utf8(entry.as_ref())?;
 
-        let code_highlighted = match ext {
-            Some(extension) => match highlight(data, extension) {
-                Some(html) => html,
-                None => return Err(NotFound.into()),
-            },
+        // highlight now handles both extension-based and heuristic-based detection
+        let code_highlighted = match highlight(data, extension) {
+            Some(html) => html,
             None => htmlescape::encode_minimal(data),
         };
 
-        // Add <code> tags to enable line numbering with CSS
+        // Wrap each line in <code> tags to support line numbering via CSS counters
         let content = format!(
             "<code>{}</code>",
             code_highlighted.replace('\n', "</code><code>")
         );
 
-        render_template(&req, &ShowPaste { content })
+        render_template(&req, &ShowPaste {
+            content,
+        })
     }
 }
 
+/// Generates the CSS file for the code highlighter theme
 async fn highlight_css() -> HttpResponse {
     static CSS: LazyLock<Bytes> = LazyLock::new(|| {
         highlight::BAT_ASSETS.with(|s| {
@@ -179,12 +188,13 @@ async fn highlight_css() -> HttpResponse {
         .body(CSS.clone())
 }
 
+/// Helper function to render Askama templates into HttpResponses
 fn render_template<T: Template>(req: &HttpRequest, template: &T) -> Result<HttpResponse, Error> {
     match template.render() {
         Ok(html) => Ok(HttpResponse::Ok().content_type("text/html").body(html)),
         Err(e) => {
             error!("Error while rendering template for {}: {e}", req.uri());
             Err(InternalServerError(Box::new(e)).into())
-        }
+        },
     }
 }
