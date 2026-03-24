@@ -1,32 +1,202 @@
 {% extends "base.html" %}
 
 {% block styles %}
+    /* Core Layout */
+    html, body {
+        overflow: hidden !important;
+        height: 100vh; width: 100vw; margin: 0; padding: 0;
+        background: #263238;
+    }
+
     pre {
-        height: 100%;
-        width: 100%;
-        margin: 0;
-        overflow: auto;
-        font-family: inherit;
-        font-size: 1rem;
-        line-height: inherit;
-        counter-reset: line;
+        height: 100vh !important; width: 100vw !important;
+        margin: 0; padding: 0;
+        overflow: auto !important;
+        scrollbar-width: none;
+        font-family: 'Fira Code', 'JetBrains Mono', monospace;
+        font-size: 14px;
+        line-height: 1.4;
     }
+
+    pre::-webkit-scrollbar { display: none; }
+
     code {
-        counter-increment: line;
+        display: block; white-space: pre;
+        margin: 0; padding: 0 0 0 1rem;
+        min-height: 1.4rem; scroll-margin-top: 1rem;
     }
+
+    /* Gutter & Line Numbers */
     code::before {
-        content: counter(line);
+        content: attr(data-line);
         display: inline-block;
-        width: 2em; /* Fixed width */
-        padding: 0 1em 0 0;
-        margin-right: .5em;
-        color: #888;
-        -webkit-user-select: none;
+        width: 3.5em; padding-right: 0.8em; margin-right: 1.2em;
+        text-align: right; color: #546e7a;
+        border-right: 1px solid #37474f;
+        user-select: none; cursor: pointer;
+        transition: all 0.1s ease;
     }
+
+    /* Enterprise Hover State */
+    code:hover::before {
+        color: #eeeeee;
+        background: rgba(255, 255, 255, 0.05);
+        border-right-color: #b5bd68;
+    }
+
+    /* Target/Range Highlight */
+    code:target, .line-range-highlight {
+        background-color: rgba(181, 189, 104, 0.1) !important;
+        box-shadow: inset 2px 0 0 #b5bd68;
+    }
+
+    /* Copy Button & Tooltip */
+    #copy-btn {
+        position: fixed; top: 1.5rem; right: 2rem; z-index: 100;
+        width: 42px; height: 42px;
+        background: #373b41; color: #c5c8c6;
+        border: 1px solid #454a4f; border-radius: 8px;
+        cursor: pointer; display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        transition: all 0.2s ease;
+    }
+
+    #copy-btn:hover { background: #454a4f; border-color: #546e7a; }
+
+    .tooltip { position: relative; }
+    .tooltip::after {
+        content: attr(data-tooltip);
+        position: absolute; bottom: -40px; right: 0;
+        background: #1c2025; color: #eeeeee;
+        padding: 5px 10px; border-radius: 4px;
+        font-size: 12px; white-space: nowrap;
+        opacity: 0; visibility: hidden;
+        transition: all 0.2s ease;
+        border: 1px solid #454a4f;
+        pointer-events: none;
+    }
+    .tooltip:hover::after { opacity: 1; visibility: visible; transform: translateY(5px); }
+
+    /* Toast Notification */
+    #toast-container { position: fixed; bottom: 2rem; right: 2rem; z-index: 1000; pointer-events: none; }
+    .toast {
+        background: #373b41; color: #c5c8c6; padding: 0.75rem 1.25rem;
+        border-radius: 6px; border: 1px solid #454a4f;
+        display: flex; align-items: center; gap: 10px;
+        font-size: 0.9rem; transform: translateY(100px); opacity: 0;
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast-icon { color: #b5bd68; width: 16px; height: 16px; }
 {% endblock styles %}
 
 {% block head %}
     <link rel="stylesheet" type="text/css" href="highlight.css" />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.11/clipboard.min.js"></script>
 {% endblock head %}
 
-{% block content %}<pre>{{ content|safe }}</pre>{% endblock content %}
+{% block content %}
+<button id="copy-btn" class="tooltip" data-tooltip="Click to Copy" title="Copy Raw">
+    <i data-lucide="copy" id="copy-icon"></i>
+</button>
+
+<div id="toast-container">
+    <div id="copy-toast" class="toast">
+        <i data-lucide="check-circle" class="toast-icon"></i>
+        <span>Copied to clipboard</span>
+    </div>
+</div>
+
+<pre id="paste-container">{% for line in lines %}<code id="L{{ loop.index }}" data-line="{{ loop.index }}">{% if line.is_empty() %}&nbsp;{% else %}{{ line|safe }}{% endif %}</code>{% endfor %}</pre>
+
+<script>
+    lucide.createIcons();
+
+    // --- Clipboard & Feedback Logic ---
+    const clipboard = new ClipboardJS('#copy-btn', {
+        text: () => Array.from(document.querySelectorAll('code')).map(c => c.textContent).join('\n')
+    });
+
+    clipboard.on('success', (e) => {
+        const btn = document.getElementById('copy-btn');
+        const icon = document.getElementById('copy-icon');
+        const toast = document.getElementById('copy-toast');
+
+        btn.setAttribute('data-tooltip', 'Copied!');
+        toast.classList.add('show');
+        icon.setAttribute('data-lucide', 'check');
+        lucide.createIcons();
+
+        // 1.5s Icon & Tooltip Reset
+        setTimeout(() => {
+            const currentIcon = document.getElementById('copy-icon');
+            if (currentIcon) {
+                currentIcon.setAttribute('data-lucide', 'copy');
+                btn.setAttribute('data-tooltip', 'Click to Copy');
+                lucide.createIcons();
+            }
+        }, 1500);
+
+        // 3.0s Toast Reset
+        setTimeout(() => {
+            toast.classList.remove('show');
+        }, 3000);
+        e.clearSelection();
+    });
+
+    // --- Range Selection & Highlighting ---
+    let lastClickedLine = null;
+
+    document.getElementById('paste-container').addEventListener('click', (e) => {
+        const line = e.target.closest('code');
+        // Only trigger if clicking the gutter area (left side)
+        if (!line || e.offsetX > 70) return;
+
+        const currentIdx = parseInt(line.getAttribute('data-line'));
+
+        if (e.shiftKey && lastClickedLine) {
+            const start = Math.min(lastClickedLine, currentIdx);
+            const end = Math.max(lastClickedLine, currentIdx);
+            window.location.hash = `L${start}-L${end}`;
+        } else {
+            window.location.hash = `L${currentIdx}`;
+            lastClickedLine = currentIdx;
+        }
+    });
+
+    function applyHashHighlight() {
+        // Clear all previous range highlights
+        document.querySelectorAll('.line-range-highlight').forEach(el => el.classList.remove('line-range-highlight'));
+
+        const hash = window.location.hash;
+        if (!hash.startsWith('#L')) return;
+
+        // Supports single #L10 or range #L10-L20
+        const parts = hash.substring(2).split('-L');
+        const range = parts.map(n => parseInt(n));
+
+        if (range.length === 2) {
+            const start = Math.min(range[0], range[1]);
+            const end = Math.max(range[0], range[1]);
+            for (let i = start; i <= end; i++) {
+                const el = document.getElementById(`L${i}`);
+                if (el) el.classList.add('line-range-highlight');
+            }
+            document.getElementById(`L${start}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else if (range.length === 1) {
+            document.getElementById(`L${range[0]}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
+    window.addEventListener('hashchange', applyHashHighlight);
+    window.addEventListener('load', applyHashHighlight);
+
+    // Alt+C Keyboard Shortcut
+    window.addEventListener('keydown', e => {
+        if (e.altKey && e.key.toLowerCase() === 'c') {
+            document.getElementById('copy-btn').click();
+        }
+    });
+</script>
+{% endblock content %}

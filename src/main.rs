@@ -130,7 +130,7 @@ async fn submit_raw(
 #[derive(Template)]
 #[template(path = "paste.html")]
 struct ShowPaste {
-    content: String,
+    lines: Vec<String>,
 }
 
 /// Displays a paste with syntax highlighting
@@ -154,20 +154,18 @@ async fn show_paste(
     } else {
         let data = std::str::from_utf8(entry.as_ref())?;
 
-        // highlight now handles both extension-based and heuristic-based detection
-        let code_highlighted = match highlight(data, extension) {
-            Some(html) => html,
+        let code_highlighted = match extension {
+            Some(extension) => match highlight(data, Some(extension)) {
+                Some(html) => html,
+                None => return Err(NotFound.into()),
+            },
             None => htmlescape::encode_minimal(data),
         };
 
-        // Wrap each line in <code> tags to support line numbering via CSS counters
-        let content = format!(
-            "<code>{}</code>",
-            code_highlighted.replace('\n', "\n</code><code>")
-        );
+        let lines: Vec<String> = code_highlighted.lines().map(String::from).collect();
 
         render_template(&req, &ShowPaste {
-            content,
+            lines,
         })
     }
 }
