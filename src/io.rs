@@ -3,7 +3,8 @@ use std::{cell::RefCell, sync::LazyLock};
 use actix_web::web::Bytes;
 use linked_hash_map::LinkedHashMap;
 use parking_lot::RwLock;
-use rand::{Rng, distr::Alphanumeric, rng};
+// In rand 0.10, Alphanumeric is moved to rand::distr and sample_iter needs RngExt in scope
+use rand::{RngExt, distr::Alphanumeric, rng};
 
 pub type PasteStore = RwLock<LinkedHashMap<String, Bytes>>;
 
@@ -29,6 +30,7 @@ pub fn generate_id() -> String {
     thread_local!(static KEYGEN: RefCell<gpw::PasswordGenerator> = RefCell::new(gpw::PasswordGenerator::default()));
 
     KEYGEN.with(|k| k.borrow_mut().next()).unwrap_or_else(|| {
+        // Updated for rand 0.10 compatibility: RngExt trait must be in scope for sample_iter
         rng()
             .sample_iter(&Alphanumeric)
             .take(6)
@@ -46,10 +48,7 @@ pub fn store_paste(entries: &PasteStore, id: String, content: Bytes) {
     entries.insert(id, content);
 }
 
-/// Get a paste by id.
-///
-/// Returns `None` if the paste doesn't exist.
+/// Returns the paste with the given id
 pub fn get_paste(entries: &PasteStore, id: &str) -> Option<Bytes> {
-    // need to box the guard until owning_ref understands Pin is a stable address
     entries.read().get(id).cloned()
 }

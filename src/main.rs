@@ -163,7 +163,7 @@ async fn show_paste(
         // Wrap each line in <code> tags to support line numbering via CSS counters
         let content = format!(
             "<code>{}</code>",
-            code_highlighted.replace('\n', "</code><code>")
+            code_highlighted.replace('\n', "\n</code><code>")
         );
 
         render_template(&req, &ShowPaste {

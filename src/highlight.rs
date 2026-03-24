@@ -36,18 +36,24 @@ pub fn highlight(content: &str, ext: Option<&str>) -> Option<String> {
             // inside a closure that returns a Result.
             let syntax: &SyntaxReference = match syntax {
                 Some(s) => s,
-                None => return Ok(None),
+                None => return Ok::<Option<String>, syntect::Error>(None),
             };
 
             let mut html_generator =
                 ClassedHTMLGenerator::new_with_class_style(syntax, ss, ClassStyle::Spaced);
 
-            // Process lines with endings to ensure generator state is maintained correctly
-            for line in LinesWithEndings(content.trim()) {
-                html_generator.parse_html_for_line_which_includes_newline(line)?;
+            // Iterate over lines while PRESERVING trailing newlines.
+            for line in LinesWithEndings(content) {
+                // Replace '?' with manual check to avoid Result/Option mismatch in closure
+                if html_generator
+                    .parse_html_for_line_which_includes_newline(line)
+                    .is_err()
+                {
+                    return Ok(None);
+                }
             }
 
-            Ok::<_, syntect::Error>(Some(html_generator.finalize()))
+            Ok(Some(html_generator.finalize()))
         })
         .ok()
         .flatten()

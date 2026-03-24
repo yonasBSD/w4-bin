@@ -13,19 +13,19 @@ log = "0.4"
 pretty_env_logger = "0.5"
 linked-hash-map = "0.5"
 parking_lot = "0.12"
-bytes = { version = "1.2", features = ["serde"] }
+bytes = { version = "1.11", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
-rand = { version = "0.9" }
+rand = { version = "0.10" }
 gpw = "0.1"
 actix = "0.13"
-actix-web = "4.4"
+actix-web = "4.13"
 htmlescape = "0.3"
-askama = "0.14"
-bat = "0.25"
-syntect = "5.1"
-tokio = { version = "1.35", features = ["sync"] }
+askama = "0.15"
+bat = "0.26"
+syntect = "5.3"
+tokio = { version = "1.50", features = ["sync"] }
 futures = "0.3"
-time = "0.3.36"
+time = "0.3.47"
 
 [profile.release]
 lto = true
